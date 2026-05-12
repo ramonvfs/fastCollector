@@ -57,7 +57,7 @@ spec:
           mountPath: /sys/fs/cgroup
           readOnly: true
         - name: dataset-storage
-          mountPath: /var/log/ai-data
+          mountPath: /var/log/ia-data
       volumes:
       - name: cgroup-volume
         hostPath:
