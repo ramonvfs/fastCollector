@@ -17,11 +17,10 @@ func ResolveCPUPath(podUID string) (string, error) {
 
 	for _, base := range bases {
 		path := fmt.Sprintf(base, uidSafe)
-		// Verifica se o arquivo realmente existe
 		if _, err := os.Stat(path); err == nil {
 			return path, nil
 		}
 	}
 
-	return "", fmt.Errorf("caminho de CPU não encontrado para o pod %s", podUID)
+	return "", fmt.Errorf("CPU path not found for pod %s", podUID)
 }

@@ -7,12 +7,11 @@ import (
 	"time"
 )
 
-// MetricPoint guarda o valor calculado no nosso ciclo de 10ms.
 type MetricPoint struct {
-	Value float64
+	Timestamp int64
+	Value     float64
 }
 
-// PodTarget mantém o arquivo real aberto para cada Pod
 type PodTarget struct {
 	ID           string
 	CPUFile      *os.File
@@ -23,13 +22,27 @@ type Collector struct {
 	mu        sync.RWMutex
 	targets   map[string]*PodTarget
 	CPUBuffer []MetricPoint
+	LogFile   *os.File
 }
 
-func NewCollector() *Collector {
+func NewCollector(logPath string) (*Collector, error) {
+	// Cria ou abre o arquivo para adicionar dados (Append)
+	f, err := os.OpenFile(logPath, os.O_APPEND|os.O_CREATE|os.O_WRONLY, 0644)
+	if err != nil {
+		return nil, err
+	}
+
+	// Se o arquivo estiver vazio, escreve o cabeçalho CSV
+	info, _ := f.Stat()
+	if info.Size() == 0 {
+		f.WriteString("timestamp,cpu_millicore\n")
+	}
+
 	return &Collector{
 		targets:   make(map[string]*PodTarget),
+		LogFile:   f,
 		CPUBuffer: make([]MetricPoint, 0),
-	}
+	}, nil
 }
 
 func (c *Collector) AddPod(podID, cpuPath string) {
@@ -38,7 +51,7 @@ func (c *Collector) AddPod(podID, cpuPath string) {
 
 	fCPU, err := os.Open(cpuPath)
 	if err != nil {
-		fmt.Printf("[Erro] Não foi possível abrir %s para o Pod %s: %v\n", cpuPath, podID, err)
+		fmt.Printf("[Error] Failed to open %s for Pod %s: %v\n", cpuPath, podID, err)
 		return
 	}
 
@@ -46,7 +59,7 @@ func (c *Collector) AddPod(podID, cpuPath string) {
 		ID:      podID,
 		CPUFile: fCPU,
 	}
-	fmt.Printf("[Sucesso] Monitorando CPU do Pod: %s\n", podID)
+	fmt.Printf("[Success] Monitoring CPU of Pod: %s\n", podID)
 }
 
 func (c *Collector) RemovePod(podID string) {
@@ -54,9 +67,9 @@ func (c *Collector) RemovePod(podID string) {
 	defer c.mu.Unlock()
 
 	if t, ok := c.targets[podID]; ok {
-		t.CPUFile.Close() // Muito importante para evitar memory leak
+		t.CPUFile.Close()
 		delete(c.targets, podID)
-		fmt.Printf("[Info] Pod removido do monitoramento: %s\n", podID)
+		fmt.Printf("[Info] Pod removed from monitoring: %s\n", podID)
 	}
 }
 
@@ -82,7 +95,7 @@ func (c *Collector) loopPrinter() {
 		if len(c.CPUBuffer) > 0 {
 			// Pega o último cálculo do buffer
 			last := c.CPUBuffer[len(c.CPUBuffer)-1]
-			fmt.Printf("[MÉTRICA 1s] CPU Média do Nó: %.2f us | Amostras no segundo: %d\n", last.Value, len(c.CPUBuffer))
+			fmt.Printf("[METRICS 1s] CPU: %.2f miliCore| Amostras: %d\n", last.Value, len(c.CPUBuffer))
 			c.CPUBuffer = nil // Limpa o buffer para o próximo segundo
 		}
 		c.mu.Unlock()

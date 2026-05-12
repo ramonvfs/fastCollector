@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"strconv"
 	"strings"
+	"time"
 )
 
 func (c *Collector) readUsageUsec(target *PodTarget) (uint64, error) {
@@ -37,19 +38,30 @@ func (c *Collector) collectCPU() {
 			continue
 		}
 
-		if t.LastCPUUsage > 0 {
+		if t.LastCPUUsage > 0 && atual > t.LastCPUUsage {
 			totalDelta += (atual - t.LastCPUUsage)
 		}
-
 		t.LastCPUUsage = atual
 		numPods++
 	}
 
-	// Calcula a média do nó para este instante de 10ms
 	if numPods > 0 {
-		media := float64(totalDelta) / float64(numPods)
+		// CONVERSÃO PARA MILLICORE:
+		// Delta em us / 10ms (10000us) * 1000 (conversão millicore)
+		// Simplificado: Delta / 10
+		miliCore := float64(totalDelta) / 10.0
+
+		now := time.Now().UnixMilli()
+
+		// 1. Salva no buffer de memória
 		c.CPUBuffer = append(c.CPUBuffer, MetricPoint{
-			Value: media,
+			Timestamp: now,
+			Value:     miliCore,
 		})
+
+		// 2. Salva direto no arquivo para o Dataset da IA
+		// Formato: timestamp, valor
+		line := fmt.Sprintf("%d,%.2f\n", now, miliCore)
+		c.LogFile.WriteString(line)
 	}
 }

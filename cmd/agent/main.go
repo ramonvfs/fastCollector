@@ -12,20 +12,23 @@ func main() {
 
 	// Verificações de segurança para as variáveis de ambiente
 	if os.Getenv("APP_LABEL") == "" {
-		fmt.Println("[Erro] A variável APP_LABEL é obrigatória. Ex: app=minha-app")
+		fmt.Println("[Error] A variável APP_LABEL é obrigatória. Ex: app=minha-app")
 		os.Exit(1)
 	}
 
-	col := collector.NewCollector()
-	col.Start() // Inicia os cronômetros (loopCPU e loopPrinter)
+	col, err := collector.NewCollector("/var/log/ia-data/cpu_dataset.csv")
+	if err != nil {
+		fmt.Printf("[Error] Falha ao criar o coletor: %v\n", err)
+		os.Exit(1)
+	}
+	col.Start() //  (loopCPU and loopPrinter)
 
 	watcher, err := discovery.NewPodWatcher(col)
 	if err != nil {
-		fmt.Printf("[Erro Crítico] Falha ao iniciar o K8s Watcher: %v\n", err)
+		fmt.Printf("[Error] Falha ao iniciar o K8s Watcher: %v\n", err)
 		os.Exit(1)
 	}
-	watcher.Start() // Começa a ouvir os eventos
+	watcher.Start()
 
-	// Trava a thread principal para o programa rodar para sempre
 	select {}
 }
