@@ -1,0 +1,70 @@
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: collector-sa
+  namespace: default
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRole
+metadata:
+  name: collector-role
+rules:
+- apiGroups: [""]
+  resources: ["pods"]
+  verbs: ["get", "list", "watch"]
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRoleBinding
+metadata:
+  name: collector-binding
+subjects:
+- kind: ServiceAccount
+  name: collector-sa
+  namespace: default
+roleRef:
+  kind: ClusterRole
+  name: collector-role
+  apiGroup: rbac.authorization.k8s.io
+---
+apiVersion: apps/v1
+kind: DaemonSet
+metadata:
+  name: cpu-collector-daemon
+  namespace: default
+spec:
+  selector:
+    matchLabels:
+      app: cpu-collector
+  template:
+    metadata:
+      labels:
+        app: cpu-collector
+    spec:
+      serviceAccountName: collector-sa
+      containers:
+      - name: cpu-collector
+        image: ramonvfs/cpu-collector:v2
+        imagePullPolicy: Always
+        env:
+        - name: APP_LABEL
+          value: "app=fuzzy-ctrl" 
+        - name: NODE_NAME
+          valueFrom:
+            fieldRef:
+              fieldPath: spec.nodeName
+        volumeMounts:
+        - name: cgroup-volume
+          mountPath: /sys/fs/cgroup
+          readOnly: true
+        - name: dataset-storage
+          mountPath: /var/log/ai-data
+      volumes:
+      - name: cgroup-volume
+        hostPath:
+          path: /sys/fs/cgroup 
+          type: Directory
+      - name: dataset-storage
+        hostPath:
+          path: /tmp/ai-dataset
+          type: DirectoryOrCreate
+      
