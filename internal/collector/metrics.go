@@ -8,6 +8,7 @@ import (
 	"time"
 )
 
+// readUsageUsec reads the usage_usec value from the CPU file of a PodTarget
 func (c *Collector) readUsageUsec(target *PodTarget) (uint64, error) {
 	target.CPUFile.Seek(0, 0)
 	scanner := bufio.NewScanner(target.CPUFile)
@@ -22,7 +23,7 @@ func (c *Collector) readUsageUsec(target *PodTarget) (uint64, error) {
 			}
 		}
 	}
-	return 0, fmt.Errorf("usage_usec não encontrado")
+	return 0, fmt.Errorf("usage_usec not found")
 }
 
 func (c *Collector) collectCPU() {
@@ -46,21 +47,14 @@ func (c *Collector) collectCPU() {
 	}
 
 	if numPods > 0 {
-		// CONVERSÃO PARA MILLICORE:
-		// Delta em us / 10ms (10000us) * 1000 (conversão millicore)
-		// Simplificado: Delta / 10
+		// Convert to millicores:
+		// Delta in us / 10ms (10000us) * 1000 (conversion to millicores)
+		// Simplified: Delta / 10
 		miliCore := float64(totalDelta) / 10.0
 
 		now := time.Now().UnixMilli()
 
-		// 1. Salva no buffer de memória
-		c.CPUBuffer = append(c.CPUBuffer, MetricPoint{
-			Timestamp: now,
-			Value:     miliCore,
-		})
-
-		// 2. Salva direto no arquivo para o Dataset da IA
-		// Formato: timestamp, valor
+		//timestamp, cpu_millicore, num_rx
 		line := fmt.Sprintf("%d,%.2f\n", now, miliCore)
 		c.LogFile.WriteString(line)
 	}

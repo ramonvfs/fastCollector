@@ -16,32 +16,31 @@ type PodTarget struct {
 	ID           string
 	CPUFile      *os.File
 	LastCPUUsage uint64
+	NetPID       string
+	LastNetRx    uint64
 }
 
 type Collector struct {
-	mu        sync.RWMutex
-	targets   map[string]*PodTarget
-	CPUBuffer []MetricPoint
-	LogFile   *os.File
+	mu      sync.RWMutex
+	targets map[string]*PodTarget
+	LogFile *os.File
 }
 
 func NewCollector(logPath string) (*Collector, error) {
-	// Cria ou abre o arquivo para adicionar dados (Append)
 	f, err := os.OpenFile(logPath, os.O_APPEND|os.O_CREATE|os.O_WRONLY, 0644)
 	if err != nil {
 		return nil, err
 	}
 
-	// Se o arquivo estiver vazio, escreve o cabeçalho CSV
 	info, _ := f.Stat()
 	if info.Size() == 0 {
+		// Write header with timestamp,cpu_millicore and num_rx
 		f.WriteString("timestamp,cpu_millicore\n")
 	}
 
 	return &Collector{
-		targets:   make(map[string]*PodTarget),
-		LogFile:   f,
-		CPUBuffer: make([]MetricPoint, 0),
+		targets: make(map[string]*PodTarget),
+		LogFile: f,
 	}, nil
 }
 
@@ -75,7 +74,6 @@ func (c *Collector) RemovePod(podID string) {
 
 func (c *Collector) Start() {
 	go c.loopCPU()
-	go c.loopPrinter()
 }
 
 func (c *Collector) loopCPU() {
@@ -83,21 +81,5 @@ func (c *Collector) loopCPU() {
 	defer ticker.Stop()
 	for range ticker.C {
 		c.collectCPU()
-	}
-}
-
-// loopPrinter exibe o resultado agrupado no terminal a cada 1 segundo.
-func (c *Collector) loopPrinter() {
-	ticker := time.NewTicker(1 * time.Second)
-	defer ticker.Stop()
-	for range ticker.C {
-		c.mu.Lock()
-		if len(c.CPUBuffer) > 0 {
-			// Pega o último cálculo do buffer
-			last := c.CPUBuffer[len(c.CPUBuffer)-1]
-			fmt.Printf("[METRICS 1s] CPU: %.2f miliCore| Amostras: %d\n", last.Value, len(c.CPUBuffer))
-			c.CPUBuffer = nil // Limpa o buffer para o próximo segundo
-		}
-		c.mu.Unlock()
 	}
 }
