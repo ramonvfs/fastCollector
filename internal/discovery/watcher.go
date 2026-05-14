@@ -69,7 +69,13 @@ func (w *PodWatcher) Start() {
 					continue
 				}
 
-				w.collector.AddPod(pod.Name, cpuPath)
+				netPath, err := ResolveNetPath(podUID)
+				if err != nil {
+					fmt.Printf("[Warning] %v\n", err)
+					continue
+				}
+
+				w.collector.AddPod(pod.Name, cpuPath, netPath)
 
 			case watch.Deleted:
 				w.collector.RemovePod(pod.Name)
