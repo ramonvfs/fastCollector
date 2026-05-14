@@ -14,16 +14,17 @@ type MetricPoint struct {
 
 type PodTarget struct {
 	ID           string
-	CPUFile      *os.File
 	LastCPUUsage uint64
-	NetPID       string
 	LastNetRx    uint64
+	CPUFile      *os.File
+	NetFile      *os.File
 }
 
 type Collector struct {
-	mu      sync.RWMutex
-	targets map[string]*PodTarget
-	LogFile *os.File
+	mu           sync.RWMutex
+	targets      map[string]*PodTarget
+	LogFile      *os.File
+	lastNetValue float64
 }
 
 func NewCollector(logPath string) (*Collector, error) {
@@ -34,8 +35,7 @@ func NewCollector(logPath string) (*Collector, error) {
 
 	info, _ := f.Stat()
 	if info.Size() == 0 {
-		// Write header with timestamp,cpu_millicore and num_rx
-		f.WriteString("timestamp,cpu_millicore\n")
+		f.WriteString("timestamp,cpu_millicore,net_rpm\n")
 	}
 
 	return &Collector{
@@ -44,21 +44,29 @@ func NewCollector(logPath string) (*Collector, error) {
 	}, nil
 }
 
-func (c *Collector) AddPod(podID, cpuPath string) {
+func (c *Collector) AddPod(podID, cpuPath, netPath string) {
 	c.mu.Lock()
 	defer c.mu.Unlock()
 
 	fCPU, err := os.Open(cpuPath)
 	if err != nil {
-		fmt.Printf("[Error] Failed to open %s for Pod %s: %v\n", cpuPath, podID, err)
+		fmt.Printf("[Error] Failed to open CPUFile %s for Pod %s: %v\n", cpuPath, podID, err)
+		return
+	}
+
+	fNet, err := os.Open(netPath)
+	if err != nil {
+		fmt.Printf("[Error] Failed to open NetFile %s for Pod %s: %v\n", netPath, podID, err)
+		fCPU.Close()
 		return
 	}
 
 	c.targets[podID] = &PodTarget{
 		ID:      podID,
 		CPUFile: fCPU,
+		NetFile: fNet,
 	}
-	fmt.Printf("[Success] Monitoring CPU of Pod: %s\n", podID)
+	fmt.Printf("[Success] Monitoring CPU and Network of Pod: %s\n", podID)
 }
 
 func (c *Collector) RemovePod(podID string) {
@@ -67,19 +75,40 @@ func (c *Collector) RemovePod(podID string) {
 
 	if t, ok := c.targets[podID]; ok {
 		t.CPUFile.Close()
+		t.NetFile.Close()
 		delete(c.targets, podID)
 		fmt.Printf("[Info] Pod removed from monitoring: %s\n", podID)
 	}
 }
 
 func (c *Collector) Start() {
-	go c.loopCPU()
+	go c.loopCollect()
 }
 
-func (c *Collector) loopCPU() {
+func (c *Collector) loopCollect() {
 	ticker := time.NewTicker(10 * time.Millisecond)
 	defer ticker.Stop()
+
+	counter := 0
+
 	for range ticker.C {
-		c.collectCPU()
+		cpuValue := c.collectCPU()
+
+		if counter >= 10 {
+			c.lastNetValue = c.collectNet()
+			counter = 0
+		}
+
+		now := time.Now().UnixMilli()
+
+		//timestamp, cpu_millicore, net_rpm
+		line := fmt.Sprintf("%d,%.2f,%.2f\n", now, cpuValue, c.lastNetValue)
+		_, err := c.LogFile.WriteString(line)
+		if err != nil {
+			fmt.Printf("Error to write to log: %v\n", err)
+		}
+
+		counter++
 	}
+
 }
