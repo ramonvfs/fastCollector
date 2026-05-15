@@ -29,21 +29,24 @@ roleRef:
 apiVersion: apps/v1
 kind: DaemonSet
 metadata:
-  name: cpu-collector-daemon
+  name: fastcollector
   namespace: default
 spec:
   selector:
     matchLabels:
-      app: cpu-collector
+      app: fastcollector
   template:
     metadata:
       labels:
-        app: cpu-collector
+        app: fastcollector
     spec:
+      hostPID: true
       serviceAccountName: collector-sa
       containers:
-      - name: cpu-collector
-        image: ramonvfs/cpu-collector:v2
+      - name: fastcollector
+        image: ramonvfs/fastcollector:v1
+        securityContext:
+          privileged: true
         imagePullPolicy: Always
         env:
         - name: APP_LABEL
@@ -56,6 +59,9 @@ spec:
         - name: cgroup-volume
           mountPath: /sys/fs/cgroup
           readOnly: true
+        - name: proc-folder
+          mountPath: /host/proc
+          readOnly: true
         - name: dataset-storage
           mountPath: /var/log/ia-data
       volumes:
@@ -63,6 +69,9 @@ spec:
         hostPath:
           path: /sys/fs/cgroup 
           type: Directory
+      - name: proc-folder
+        hostPath:
+          path: /proc
       - name: dataset-storage
         hostPath:
           path: /tmp/ai-dataset
