@@ -26,19 +26,37 @@ func (c *Collector) readUsageUsec(target *PodTarget) (uint64, error) {
 }
 
 func (c *Collector) readRxPackets(target *PodTarget) (uint64, error) {
+	_, err := target.NetFile.Seek(0, 0)
+	if err != nil {
+		return 0, fmt.Errorf("Error to reset netfile: %v", err)
+	}
 	scanner := bufio.NewScanner(target.NetFile)
+
+	const ifaceToFind = "eth0"
 
 	for scanner.Scan() {
 		line := scanner.Text()
 
-		if strings.Contains(line, "eth0") {
-			fields := strings.Fields(line)
-			if len(fields) > 2 {
-				return strconv.ParseUint(fields[2], 10, 64)
-			}
+		parts := strings.SplitN(line, ":", 2)
+		if len(parts) != 2 {
+			continue
+		}
+
+		iface := strings.TrimSpace(parts[0])
+		if iface != ifaceToFind && !strings.HasPrefix(iface, ifaceToFind+"@") {
+			continue
+		}
+
+		cols := strings.Fields(strings.TrimSpace(parts[1]))
+		if len(cols) >= 2 {
+			return strconv.ParseUint(cols[1], 10, 64)
 		}
 	}
-	return 0, fmt.Errorf("Interface eth0 not found in proc")
+
+	if err := scanner.Err(); err != nil {
+		return 0, fmt.Errorf("Error scanning net file: %v", err)
+	}
+	return 0, fmt.Errorf("Interface %s not found in %s", ifaceToFind, target.NetFile.Name())
 }
 
 func (c *Collector) collectCPU() float64 {
