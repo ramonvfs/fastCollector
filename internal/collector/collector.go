@@ -7,11 +7,6 @@ import (
 	"time"
 )
 
-type MetricPoint struct {
-	Timestamp int64
-	Value     float64
-}
-
 type PodTarget struct {
 	ID           string
 	LastCPUUsage uint64
@@ -21,10 +16,9 @@ type PodTarget struct {
 }
 
 type Collector struct {
-	mu           sync.RWMutex
-	targets      map[string]*PodTarget
-	LogFile      *os.File
-	lastNetValue float64
+	mu      sync.RWMutex
+	targets map[string]*PodTarget
+	LogFile *os.File
 }
 
 func NewCollector(logPath string) (*Collector, error) {
@@ -35,7 +29,7 @@ func NewCollector(logPath string) (*Collector, error) {
 
 	info, _ := f.Stat()
 	if info.Size() == 0 {
-		f.WriteString("timestamp,cpu_millicore,net_rpm\n")
+		f.WriteString("timestamp,cpu_millicore,net_rpm,num_pods\n")
 	}
 
 	return &Collector{
@@ -93,16 +87,17 @@ func (c *Collector) loopCollect() {
 
 	for range ticker.C {
 		cpuValue := c.collectCPU()
+		netValue := 0.0
 
-		if counter >= 10 {
-			c.lastNetValue = c.collectNet()
-			counter = 0
+		if counter >= 9 {
+			netValue = c.collectNet()
+			counter = -1
 		}
 
 		now := time.Now().UnixMilli()
 
-		//timestamp, cpu_millicore, net_rpm
-		line := fmt.Sprintf("%d,%.2f,%.2f\n", now, cpuValue, c.lastNetValue)
+		//timestamp, cpu_millicore, net_rpm, num_pods
+		line := fmt.Sprintf("%d,%.2f,%.2f,%d\n", now, cpuValue, netValue, len(c.targets))
 		_, err := c.LogFile.WriteString(line)
 		if err != nil {
 			fmt.Printf("Error to write to log: %v\n", err)
